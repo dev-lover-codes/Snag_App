@@ -1,10 +1,10 @@
-﻿# Snag
+# Snag
 
 **Snag it now, find it later.** Snag is a personal save-for-later app for Android. Its Messenger tab has a pinned **Saved Messages** chat where every note, link, image or PDF you save becomes a bubble. Items sync to your account, so they're the same on every device you sign in on. The **Drive** tab shows your chat attachments in one place.
 
 <img src="docs/screenshots/login.png" width="260" alt="Snag login screen">
 
-**Download:** [latest APK from GitHub Releases](https://github.com/dev-lover-codes/Snag/releases/latest) · **Website:** [snag-teal.vercel.app](https://snag-teal.vercel.app)
+**Download:** [latest APK from GitHub Releases](https://github.com/dev-lover-codes/Snag_App/releases/latest) · **Website:** [snag-teal.vercel.app](https://snag-teal.vercel.app)
 
 ## Stage reached
 
