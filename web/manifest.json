@@ -1,0 +1,25 @@
+{
+    "name": "Snag",
+    "short_name": "Snag",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#F4FBF9",
+    "theme_color": "#0F766E",
+    "description": "Snag it now, find it later. Save notes, links, images and PDFs; chat, keep files and plan events.",
+    "orientation": "any",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/snag.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        },
+        {
+            "src": "icons/snag-maskable.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "maskable"
+        }
+    ]
+}
