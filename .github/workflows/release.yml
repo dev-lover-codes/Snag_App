@@ -110,13 +110,12 @@ jobs:
           fi
           flutter build apk --release $DART_DEFINES
 
-      - name: Prepare Release Artifacts
+      - name: Prepare Release APK
         id: artifacts
         run: |
           TAG="${{ steps.vars.outputs.tag_name }}"
           SRC_APK="build/app/outputs/flutter-apk/app-release.apk"
           DEST_APK="snag-${TAG}.apk"
-          SHA_FILE="${DEST_APK}.sha256"
 
           if [ ! -f "$SRC_APK" ]; then
             echo "Error: Expected APK file not found at $SRC_APK"
@@ -124,21 +123,15 @@ jobs:
           fi
 
           cp "$SRC_APK" "$DEST_APK"
-          sha256sum "$DEST_APK" > "$SHA_FILE"
-
           echo "apk_path=$DEST_APK" >> "$GITHUB_OUTPUT"
-          echo "sha256_path=$SHA_FILE" >> "$GITHUB_OUTPUT"
-          echo "Artifacts prepared:"
-          ls -lh "$DEST_APK" "$SHA_FILE"
-          cat "$SHA_FILE"
+          echo "Release APK prepared: $DEST_APK"
+          ls -lh "$DEST_APK"
 
       - name: Upload APK to Workflow Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: snag-${{ steps.vars.outputs.tag_name }}-apk
-          path: |
-            ${{ steps.artifacts.outputs.apk_path }}
-            ${{ steps.artifacts.outputs.sha256_path }}
+          path: ${{ steps.artifacts.outputs.apk_path }}
           if-no-files-found: error
           retention-days: 30
 
@@ -147,9 +140,7 @@ jobs:
         with:
           tag_name: ${{ steps.vars.outputs.tag_name }}
           name: Snag ${{ steps.vars.outputs.tag_name }}
-          files: |
-            ${{ steps.artifacts.outputs.apk_path }}
-            ${{ steps.artifacts.outputs.sha256_path }}
+          files: ${{ steps.artifacts.outputs.apk_path }}
           draft: ${{ github.event.inputs.draft == 'true' }}
           prerelease: ${{ github.event.inputs.prerelease == 'true' }}
           generate_release_notes: true
