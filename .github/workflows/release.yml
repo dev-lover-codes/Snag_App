@@ -1,0 +1,155 @@
+name: Build & Release Android APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag (e.g. v1.5.0). Defaults to v<pubspec version> if left empty.'
+        required: false
+        default: ''
+      draft:
+        description: 'Publish as draft release'
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Publish as prerelease'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Publish Release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Verify Flutter Installation
+        run: flutter doctor -v
+
+      - name: Grant execute permission for Gradle wrapper
+        run: chmod +x android/gradlew
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run automated tests
+        run: flutter test
+
+      - name: Resolve Release Tag & Version
+        id: vars
+        run: |
+          PUBSPEC_VERSION=$(grep '^version: ' pubspec.yaml | head -n 1 | awk '{print $2}' | cut -d'+' -f1 | tr -d '[:space:]')
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            TAG_NAME="${{ github.event.inputs.tag_name }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG_NAME="${{ github.ref_name }}"
+          else
+            TAG_NAME="v$PUBSPEC_VERSION"
+          fi
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$PUBSPEC_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved Tag: $TAG_NAME (Version: $PUBSPEC_VERSION)"
+
+      - name: Build Android Release APK
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          DART_DEFINES=""
+          if [ -n "$SUPABASE_URL" ]; then
+            echo "Injecting SUPABASE_URL from repository secrets"
+            DART_DEFINES="$DART_DEFINES --dart-define=SUPABASE_URL=$SUPABASE_URL"
+          else
+            echo "Warning: SUPABASE_URL secret is not set"
+          fi
+          if [ -n "$SUPABASE_ANON_KEY" ]; then
+            echo "Injecting SUPABASE_ANON_KEY from repository secrets"
+            DART_DEFINES="$DART_DEFINES --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
+          else
+            echo "Warning: SUPABASE_ANON_KEY secret is not set"
+          fi
+          flutter build apk --release $DART_DEFINES
+
+      - name: Prepare Release Artifacts
+        id: artifacts
+        run: |
+          TAG="${{ steps.vars.outputs.tag_name }}"
+          SRC_APK="build/app/outputs/flutter-apk/app-release.apk"
+          DEST_APK="snag-${TAG}.apk"
+          SHA_FILE="${DEST_APK}.sha256"
+
+          if [ ! -f "$SRC_APK" ]; then
+            echo "Error: Expected APK file not found at $SRC_APK"
+            exit 1
+          fi
+
+          cp "$SRC_APK" "$DEST_APK"
+          sha256sum "$DEST_APK" > "$SHA_FILE"
+
+          echo "apk_path=$DEST_APK" >> "$GITHUB_OUTPUT"
+          echo "sha256_path=$SHA_FILE" >> "$GITHUB_OUTPUT"
+          echo "Artifacts prepared:"
+          ls -lh "$DEST_APK" "$SHA_FILE"
+          cat "$SHA_FILE"
+
+      - name: Upload APK to Workflow Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: snag-${{ steps.vars.outputs.tag_name }}-apk
+          path: |
+            ${{ steps.artifacts.outputs.apk_path }}
+            ${{ steps.artifacts.outputs.sha256_path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish to GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.vars.outputs.tag_name }}
+          APK_PATH: ${{ steps.artifacts.outputs.apk_path }}
+          SHA_PATH: ${{ steps.artifacts.outputs.sha256_path }}
+          IS_DRAFT: ${{ github.event.inputs.draft || 'false' }}
+          IS_PRERELEASE: ${{ github.event.inputs.prerelease || 'false' }}
+        run: |
+          FLAGS=""
+          if [ "$IS_DRAFT" = "true" ]; then FLAGS="$FLAGS --draft"; fi
+          if [ "$IS_PRERELEASE" = "true" ]; then FLAGS="$FLAGS --prerelease"; fi
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Release '$TAG_NAME' already exists. Uploading new assets..."
+            gh release upload "$TAG_NAME" "$APK_PATH" "$SHA_PATH" --clobber
+          else
+            echo "Creating new release '$TAG_NAME' on commit ${{ github.sha }}..."
+            gh release create "$TAG_NAME" "$APK_PATH" "$SHA_PATH" \
+              --target "${{ github.sha }}" \
+              --title "Snag $TAG_NAME" \
+              --generate-notes \
+              $FLAGS
+          fi
+          echo "Successfully published release assets for $TAG_NAME"
