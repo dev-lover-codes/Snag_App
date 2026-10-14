@@ -25,12 +25,18 @@ on:
 
 permissions:
   contents: write
+  pull-requests: read
+  issues: read
 
 jobs:
   build-and-release:
     name: Build & Release Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: read
+      issues: read
 
     steps:
       - name: Checkout repository
@@ -137,27 +143,14 @@ jobs:
           retention-days: 30
 
       - name: Publish to GitHub Releases
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ steps.vars.outputs.tag_name }}
-          APK_PATH: ${{ steps.artifacts.outputs.apk_path }}
-          SHA_PATH: ${{ steps.artifacts.outputs.sha256_path }}
-          IS_DRAFT: ${{ github.event.inputs.draft || 'false' }}
-          IS_PRERELEASE: ${{ github.event.inputs.prerelease || 'false' }}
-        run: |
-          FLAGS=""
-          if [ "$IS_DRAFT" = "true" ]; then FLAGS="$FLAGS --draft"; fi
-          if [ "$IS_PRERELEASE" = "true" ]; then FLAGS="$FLAGS --prerelease"; fi
-
-          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            echo "Release '$TAG_NAME' already exists. Uploading/updating assets..."
-            gh release upload "$TAG_NAME" "$APK_PATH" "$SHA_PATH" --clobber
-          else
-            echo "Creating new release '$TAG_NAME' on commit ${{ github.sha }}..."
-            gh release create "$TAG_NAME" "$APK_PATH" "$SHA_PATH" \
-              --target "${{ github.sha }}" \
-              --title "Snag $TAG_NAME" \
-              --generate-notes \
-              $FLAGS
-          fi
-          echo "Successfully published release assets for $TAG_NAME"
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag_name }}
+          name: Snag ${{ steps.vars.outputs.tag_name }}
+          files: |
+            ${{ steps.artifacts.outputs.apk_path }}
+            ${{ steps.artifacts.outputs.sha256_path }}
+          draft: ${{ github.event.inputs.draft == 'true' }}
+          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+          generate_release_notes: true
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
